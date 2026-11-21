@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Core-Timer</title>
+<style>
+  :root {
+    --bg: #14183c;
+    --bg-rest: #0f2f3b;
+    --ink: #f5f1e8;
+    --muted: #a9acc9;
+    --work: #ffb703;
+    --rest: #5cc8c0;
+    --line: rgba(245, 241, 232, .16);
+    --top: var(--work);
+    --mat: rgba(245, 241, 232, .10);
+    color-scheme: dark;
+  }
+  body.rest { --top: var(--rest); }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    background: var(--bg); color: var(--ink);
+    font-family: ui-rounded, "SF Pro Rounded", "Avenir Next", system-ui, sans-serif;
+    transition: background .6s ease;
+    padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  }
+  body.rest { background: var(--bg-rest); }
+  main { max-width: 520px; margin: 0 auto; min-height: 100vh; display: flex; flex-direction: column; padding: 20px 20px 36px; }
+  h1 { font-size: 28px; margin: 8px 0 14px; letter-spacing: -.01em; }
+  h2 { font-size: 24px; margin: 0 0 4px; letter-spacing: -.01em; }
+  h3 { font-size: 18px; margin: 26px 0 10px; }
+  p { line-height: 1.45; }
+  .muted { color: var(--muted); }
+  button { font-family: inherit; }
+  :focus-visible { outline: 3px solid var(--ink); outline-offset: 3px; }
+
+  /* Plan */
+  #plan { display: block; }
+  body.running #plan { display: none; }
+  .banner { background: var(--work); color: #1b1600; border-radius: 14px; padding: 12px 14px; margin-bottom: 14px; font-weight: 600; line-height: 1.4; }
+  .weeks { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .weeks button, .ctl {
+    border: 1.5px solid var(--line); background: transparent; color: var(--ink); border-radius: 12px;
+    min-height: 44px; font-size: 16px; cursor: pointer;
+  }
+  .weeks button[aria-pressed=true] { background: var(--ink); color: var(--bg); border-color: var(--ink); font-weight: 700; }
+  .weektheme { margin: 8px 0 14px; color: var(--muted); }
+  .days { display: grid; grid-template-columns: repeat(7, 1fr); gap: 6px; }
+  .days button {
+    position: relative; aspect-ratio: 1; border-radius: 50%; border: 1.5px solid var(--line); background: transparent;
+    color: var(--ink); font-size: 18px; font-weight: 700; cursor: pointer; padding: 0; min-width: 40px;
+  }
+  .days button.done { background: var(--work); color: #1b1600; border-color: var(--work); }
+  .days button[aria-pressed=true] { box-shadow: 0 0 0 3px var(--bg), 0 0 0 5px var(--ink); }
+  .days button.next::after { content: ""; position: absolute; left: 50%; bottom: -9px; width: 6px; height: 6px; margin-left: -3px; border-radius: 50%; background: var(--rest); }
+  .daycard { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 18px; }
+  .daycard ol { padding-left: 22px; margin: 10px 0 14px; line-height: 1.7; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; }
+  .row input[type=checkbox] { width: 24px; height: 24px; accent-color: var(--work); flex: none; }
+  .row small { display: block; color: var(--muted); margin-top: 2px; }
+  button.big { width: 100%; border: 0; border-radius: 18px; padding: 18px; font-size: 20px; font-weight: 700; background: var(--work); color: #1b1600; min-height: 60px; cursor: pointer; }
+  button.ghost { background: transparent; color: var(--ink); border: 1.5px solid var(--line); border-radius: 14px; padding: 12px 18px; font-size: 16px; min-height: 48px; cursor: pointer; }
+  .daycard .ghost { width: 100%; margin-top: 10px; }
+  .linkbtn { display: flex; align-items: center; justify-content: center; text-decoration: none; margin-top: 10px; width: 100%; box-sizing: border-box; }
+  .vid { border-top: 1px solid var(--line); padding: 14px 0; }
+  .vtitle { font-weight: 700; margin-bottom: 8px; }
+  .vplayer iframe { width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 12px; display: block; margin-bottom: 8px; }
+  .vbtns { display: flex; gap: 8px; flex-wrap: wrap; }
+  .vbtns .ghost { flex: 1 1 auto; margin-top: 0; padding: 10px 12px; font-size: 15px; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip.wide { width: auto; border-radius: 20px; padding: 0 14px; }
+  .chip { width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--line); background: transparent; color: var(--ink); font-size: 16px; font-weight: 700; cursor: pointer; padding: 0; }
+  .chip[aria-pressed=true] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+  .vdays { margin-top: 10px; color: var(--muted); font-size: 14px; display: grid; gap: 6px; }
+  .overview { display: grid; gap: 8px; }
+  .ovrow { display: grid; grid-template-columns: 74px repeat(7, 1fr); gap: 6px; align-items: center; }
+  .ovrow span { color: var(--muted); font-size: 14px; }
+  .ovrow button { aspect-ratio: 1; border-radius: 8px; border: 1.5px solid var(--line); background: transparent; padding: 0; cursor: pointer; min-height: 28px; }
+  .ovrow button.done { background: var(--work); border-color: var(--work); }
+  details { border-top: 1px solid var(--line); margin-top: 22px; padding-top: 14px; }
+  summary { font-weight: 700; font-size: 18px; cursor: pointer; min-height: 32px; }
+  .field { display: grid; gap: 6px; margin: 12px 0; }
+  .field input[type=text], .field input[type=date] {
+    background: rgba(255,255,255,.07); border: 1.5px solid var(--line); border-radius: 12px; color: var(--ink);
+    padding: 12px; font-size: 18px; font-family: inherit; min-height: 48px;
+  }
+  .filebtn { color: var(--work); text-decoration: underline; cursor: pointer; }
+  .hist { color: var(--muted); line-height: 1.7; margin: 12px 0 0; }
+
+  /* Training */
+  #run { display: none; flex: 1; flex-direction: column; }
+  body.running #run { display: flex; }
+  .meta { display: flex; justify-content: space-between; color: var(--muted); font-size: 15px; min-height: 22px; }
+  .phase { font-size: 22px; font-weight: 700; margin: 10px 0 0; color: var(--work); transition: color .4s; }
+  body.rest .phase { color: var(--rest); }
+  .stage { flex: 1; display: flex; flex-direction: column; justify-content: center; min-height: 0; }
+  .figure { width: 100%; aspect-ratio: 400 / 240; }
+  .figure svg { width: 100%; height: 100%; display: block; }
+  body.rest .figure { opacity: .85; }
+  .name { font-size: 32px; font-weight: 800; margin: 6px 0 4px; letter-spacing: -.01em; text-align: center; }
+  .tip { color: var(--muted); text-align: center; line-height: 1.4; margin: 0 8px; min-height: 66px; }
+  .clock { position: relative; width: 170px; height: 170px; margin: 6px auto 0; }
+  .clock svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  .clock circle { fill: none; stroke-width: 12; }
+  .clock .track { stroke: var(--line); }
+  .clock .bar { stroke: var(--work); stroke-linecap: round; transition: stroke .4s; }
+  body.rest .clock .bar { stroke: var(--rest); }
+  .clock .num { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 72px; font-weight: 800; font-variant-numeric: tabular-nums; }
+  .controls { display: flex; gap: 10px; margin-top: 18px; }
+  .controls button { flex: 1; }
+  #done { display: none; text-align: center; margin: auto 0; }
+  body.finished #done { display: block; }
+  body.finished .stage, body.finished .controls, body.finished .meta, body.finished .phase { display: none; }
+  #done h2 { font-size: 34px; margin: 0 0 8px; }
+  #done p { color: var(--muted); margin: 0 0 24px; }
+  @media (max-height: 760px) { .clock { width: 130px; height: 130px; } .clock .num { font-size: 54px; } .name { font-size: 26px; } .tip { min-height: 0; } }
+</style>
+</head>
+<body>
+<main>
+
+  <section id="plan">
+    <h1>Core-Timer</h1>
+    <div id="banner" class="banner" hidden></div>
+
+    <div class="weeks" id="weeks" role="group" aria-label="Woche wählen"></div>
+    <p class="weektheme" id="weekTheme"></p>
+    <div class="days" id="days" role="group" aria-label="Tag wählen"></div>
+
+    <div class="daycard">
+      <h2 id="dayTitle"></h2>
+      <div class="muted" id="dayMeta"></div>
+      <ol id="exList"></ol>
+      <div class="row" id="shortRow">
+        <div>Kurzversion (1 Runde)<small>Für Tage mit wenig Zeit oder Motivation</small></div>
+        <input type="checkbox" id="short" aria-label="Kurzversion">
+      </div>
+      <button class="big" id="start">Training starten</button>
+      <button class="ghost" id="markDone"></button>
+    </div>
+
+    <h3 id="videosTitle">Videos zum Mitmachen</h3>
+    <div id="videos"></div>
+    <button class="ghost" id="vAll" style="width:100%"></button>
+    <details id="addVideo">
+      <summary>Eigenes Video hinzufügen</summary>
+      <div class="field"><label for="vTitle">Titel (optional)</label><input type="text" id="vTitle" placeholder="zum Beispiel Bauch-Challenge"></div>
+      <div class="field"><span>An welchen Tagen anzeigen? Ohne Auswahl erscheint es an jedem Tag.</span><div class="chips" id="vNewDays"></div></div>
+      <div class="field"><label for="vUrl">YouTube-Link</label><input type="text" id="vUrl" inputmode="url" autocapitalize="off" autocorrect="off" placeholder="https://www.youtube.com/watch?v=..."></div>
+      <button class="ghost" id="vAdd" style="width:100%">Video hinzufügen</button>
+      <p class="muted" id="vMsg" style="font-size:14px"></p>
+    </details>
+
+    <details id="measure">
+      <summary>Messen: Start und Tag 7</summary>
+      <p class="muted">Immer unter gleichen Bedingungen, zum Beispiel morgens nach dem Toilettengang. Maßband auf Höhe des Bauchnabels, locker ausatmen. Fürs Gewicht zählt der Durchschnitt mehrerer Tage mehr als ein Einzelwert.</p>
+      <div class="field"><span>Messung für</span><div class="chips" id="mSel" role="group" aria-label="Messzeitpunkt wählen"></div></div>
+      <div class="field"><label for="mcm">Bauchumfang in cm (<span class="mw"></span>)</label><input type="text" inputmode="decimal" id="mcm" placeholder="zum Beispiel 92,5"></div>
+      <div class="field"><label for="mkg">Gewicht in kg</label><input type="text" inputmode="decimal" id="mkg" placeholder="zum Beispiel 70,2"></div>
+      <div class="row"><label for="mphoto">Fotos von vorn und von der Seite gemacht</label><input type="checkbox" id="mphoto"></div>
+      <button class="ghost" id="saveMeasure">Messwerte speichern</button>
+      <p class="hist" id="hist"></p>
+    </details>
+
+    <h3>Dein Fortschritt</h3>
+    <p class="muted" id="ovSummary" style="margin-top:0"></p>
+    <div class="overview" id="overview"></div>
+
+    <details>
+      <summary>Einstellungen</summary>
+      <div class="row"><div>Musik<small id="musicInfo">Eingebauter Sport-Beat</small></div><input type="checkbox" id="music" checked aria-label="Musik an"></div>
+      <div class="row"><div>Ansagen auf Deutsch<small>Nennt die nächste Übung</small></div><input type="checkbox" id="voice" checked aria-label="Ansagen an"></div>
+      <div class="row"><div>Eigene Musik<small><label class="filebtn" for="file">Audiodatei wählen</label> <span id="fileName"></span></small></div><input type="file" id="file" accept="audio/*" hidden></div>
+      <div class="field"><label for="startDate">Startdatum des Plans</label><input type="date" id="startDate"></div>
+      <button class="ghost" id="ics" style="width:100%">Erinnerungen für Start und Messtage in den Kalender</button>
+      <p class="muted" style="font-size:14px">Die Kalenderdatei setzt die Startmessung auf das Startdatum und die Messtage auf Tag 7 jeder Woche, jeweils um 8 Uhr. Bei Schmerzen im Rücken oder Nacken die Übung abbrechen.</p>
+    </details>
+  </section>
+
+  <section id="run">
+    <div class="meta"><span id="metaEx"></span><span id="metaLeft"></span></div>
+    <div class="phase" id="phase"></div>
+    <div class="stage">
+      <div class="figure" id="figure"></div>
+      <div class="name" id="name"></div>
+      <p class="tip" id="tip"></p>
+      <div class="clock">
+        <svg viewBox="0 0 200 200" aria-hidden="true">
+          <circle class="track" cx="100" cy="100" r="88"></circle>
+          <circle class="bar" id="bar" cx="100" cy="100" r="88" stroke-dasharray="552.92" stroke-dashoffset="0"></circle>
+        </svg>
+        <div class="num" id="num" role="timer">0</div>
+      </div>
+    </div>
+    <div class="controls">
+      <button class="ghost" id="pause">Pause</button>
+      <button class="ghost" id="skip">Weiter</button>
+      <button class="ghost" id="stop">Beenden</button>
+    </div>
+    <div id="done">
+      <h2 id="doneTitle">Geschafft</h2>
+      <p id="doneText"></p>
+      <button class="big" id="again">Zurück zum Plan</button>
+    </div>
+  </section>
+
+</main>
+
+<script>
+/* ================= Speicher ================= */
+const KEY = 'coretimer.v2';
+let DB = { done: {}, meas: {}, start: null };
+try { Object.assign(DB, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) {}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(DB)); } catch (e) {} }
+function iso(d) { const p = n => String(n).padStart(2, '0'); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
+if (!DB.start) { DB.start = iso(new Date()); save(); }
+const $ = id => document.getElementById(id);
+
+/* ================= Figuren ================= */
+const AN = !(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+const DUR = '2.6s';
+const OUT = '#0b0d24';
+const C = { top: 'var(--top)', pants: '#8794ff', farpants: '#5560b8', skin: '#f2c9a8', farskin: '#c49d80', shoe: '#f5f1e8', hair: '#5a3d2e' };
+const LS = 'fill="none" stroke-linecap="round" stroke-linejoin="round"';
+const P = a => a.map(p => p.join(',')).join(' ');
+function anim(attr, a, b) {
+  if (!AN || !b) return '';
+  return `<animate attributeName="${attr}" values="${a};${b};${a}" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 0 .55 1;.45 0 .55 1" dur="${DUR}" repeatCount="indefinite"/>`;
+}
+function limb(a, b, col, w) {
+  const p = P(a), q = b ? P(b) : null, an = anim('points', p, q);
+  return `<polyline points="${p}" style="stroke:${OUT};stroke-width:${w + 5}" ${LS}>${an}</polyline>` +
+         `<polyline points="${p}" style="stroke:${col};stroke-width:${w}" ${LS}>${an}</polyline>`;
+}
+function head(x, y, x2, y2) {
+  const dx = (x2 ?? x) - x, dy = (y2 ?? y) - y;
+  const an = (AN && (dx || dy)) ? `<animateTransform attributeName="transform" type="translate" values="0 0;${dx} ${dy};0 0" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 0 .55 1;.45 0 .55 1" dur="${DUR}" repeatCount="indefinite"/>` : '';
+  return `<g>${an}<circle cx="${x}" cy="${y}" r="15" style="fill:${C.skin};stroke:${OUT};stroke-width:3"/>` +
+         `<path d="M${x - 14} ${y - 2} A14 14 0 0 1 ${x + 11} ${y - 9}" style="stroke:${C.hair};stroke-width:8" ${LS}/></g>`;
+}
+const MAT = '<rect x="14" y="206" width="372" height="12" rx="6" style="fill:var(--mat)"/>';
+const guide = (a, b) => `<line x1="${a[0]}" y1="${a[1]}" x2="${b[0]}" y2="${b[1]}" style="stroke:var(--top);stroke-width:3;opacity:.55" stroke-dasharray="2 9" stroke-linecap="round"/>`;
+
+const fig = {
+  plank: () => MAT + guide([48, 202], [314, 130]) +
+    limb([[62, 194], [162, 166]], null, C.pants, 16) + limb([[56, 204], [64, 194]], null, C.shoe, 9) +
+    limb([[162, 166], [262, 140]], null, C.top, 24) +
+    limb([[262, 142], [262, 198]], null, C.skin, 11) + limb([[262, 198], [326, 198]], null, C.skin, 11) +
+    head(296, 124),
+  side: () => MAT + guide([48, 204], [288, 126]) +
+    limb([[142, 168], [62, 192]], null, C.farpants, 16) +
+    limb([[142, 172], [62, 196]], null, C.pants, 16) + limb([[56, 204], [64, 197]], null, C.shoe, 9) +
+    limb([[240, 142], [252, 66]], null, C.farskin, 11) +
+    limb([[142, 172], [240, 142]], null, C.top, 24) +
+    limb([[240, 144], [240, 198]], null, C.skin, 11) + limb([[240, 198], [268, 198]], null, C.skin, 11) +
+    head(270, 124),
+  deadbug: () => MAT +
+    limb([[194, 194], [194, 128], [258, 128]], [[194, 194], [266, 194], [338, 193]], C.farpants, 16) +
+    limb([[96, 194], [96, 122]], null, C.farskin, 11) +
+    limb([[88, 196], [190, 196]], null, C.top, 24) +
+    limb([[188, 194], [188, 128], [252, 128]], null, C.pants, 16) +
+    limb([[92, 194], [92, 157], [92, 120]], [[92, 194], [62, 166], [28, 148]], C.skin, 11) +
+    head(52, 190),
+  birddog: () => MAT +
+    limb([[150, 134], [150, 196], [106, 198]], null, C.farpants, 16) +
+    limb([[272, 134], [272, 167], [272, 198]], [[272, 134], [316, 128], [360, 122]], C.farskin, 11) +
+    limb([[150, 134], [266, 134]], null, C.top, 24) +
+    limb([[150, 136], [150, 196], [104, 198]], [[150, 136], [97, 132], [44, 128]], C.pants, 16) +
+    limb([[270, 136], [270, 198]], null, C.skin, 11) +
+    head(298, 116),
+  reverse: () => MAT +
+    limb([[194, 194], [194, 128], [254, 128]], [[199, 172], [169, 118], [219, 104]], C.farpants, 16) +
+    limb([[88, 196], [186, 196]], [[88, 196], [196, 176]], C.top, 24) +
+    limb([[188, 194], [188, 128], [248, 128]], [[195, 174], [165, 120], [215, 106]], C.pants, 16) +
+    limb([[92, 196], [160, 199]], null, C.skin, 11) +
+    head(54, 190),
+  crunch: () => MAT +
+    limb([[194, 194], [250, 140], [296, 198]], null, C.farpants, 16) +
+    limb([[190, 194], [245, 138], [292, 198]], null, C.pants, 16) +
+    limb([[88, 194], [190, 194]], [[112, 168], [190, 194]], C.top, 24) +
+    limb([[92, 194], [150, 198]], [[116, 170], [172, 160]], C.skin, 11) +
+    head(58, 189, 86, 158),
+  russian: () => MAT +
+    limb([[172, 192], [232, 150], [272, 198]], null, C.farpants, 16) +
+    limb([[168, 192], [228, 148], [268, 198]], null, C.pants, 16) +
+    limb([[168, 190], [126, 122]], null, C.top, 24) +
+    limb([[128, 126], [172, 130], [214, 136]], [[128, 126], [150, 152], [172, 174]], C.skin, 11) +
+    head(108, 98),
+  bridge: () => MAT +
+    limb([[172, 194], [218, 138], [254, 198]], [[174, 158], [224, 128], [254, 198]], C.farpants, 16) +
+    limb([[88, 196], [170, 194]], [[88, 196], [172, 158]], C.top, 24) +
+    limb([[168, 194], [214, 138], [250, 198]], [[170, 158], [220, 128], [250, 198]], C.pants, 16) +
+    limb([[92, 196], [150, 199]], null, C.skin, 11) +
+    head(54, 190),
+  climber: () => MAT +
+    limb([[172, 152], [122, 176], [72, 198]], null, C.farpants, 16) +
+    limb([[282, 127], [282, 198]], null, C.farskin, 11) +
+    limb([[170, 152], [280, 127]], null, C.top, 24) +
+    limb([[170, 154], [120, 176], [70, 198]], [[170, 154], [228, 160], [196, 196]], C.pants, 16) +
+    limb([[278, 129], [278, 198]], null, C.skin, 11) +
+    head(308, 108),
+  shoulder: () => MAT +
+    limb([[172, 152], [122, 176], [72, 198]], null, C.farpants, 16) +
+    limb([[170, 154], [120, 176], [70, 198]], null, C.pants, 16) +
+    limb([[282, 127], [282, 198]], null, C.farskin, 11) +
+    limb([[170, 152], [280, 127]], null, C.top, 24) +
+    limb([[278, 129], [278, 164], [278, 198]], [[278, 129], [316, 160], [294, 124]], C.skin, 11) +
+    head(308, 108),
+  march: () => MAT +
+    limb([[200, 132], [200, 170], [200, 204]], [[200, 132], [238, 120], [238, 162]], C.farpants, 16) +
+    limb([[200, 74], [222, 100], [238, 122]], [[200, 74], [180, 100], [166, 124]], C.farskin, 11) +
+    limb([[200, 68], [200, 132]], null, C.top, 24) +
+    limb([[200, 132], [240, 120], [240, 162]], [[200, 132], [200, 170], [200, 204]], C.pants, 16) +
+    limb([[200, 74], [180, 100], [166, 124]], [[200, 74], [222, 100], [238, 122]], C.skin, 11) +
+    head(200, 44),
+  catcow: () => MAT +
+    limb([[150, 134], [150, 196], [106, 198]], null, C.farpants, 16) +
+    limb([[272, 134], [272, 198]], null, C.farskin, 11) +
+    limb([[150, 136], [210, 118], [266, 134]], [[150, 134], [210, 150], [266, 134]], C.top, 24) +
+    limb([[150, 136], [150, 196], [104, 198]], null, C.pants, 16) +
+    limb([[270, 136], [270, 198]], null, C.skin, 11) +
+    head(292, 146, 300, 112),
+  child: () => MAT +
+    limb([[95, 198], [205, 198]], null, C.pants, 16) +
+    limb([[205, 196], [142, 170]], null, C.pants, 16) +
+    limb([[142, 168], [240, 180]], null, C.top, 24) +
+    limb([[240, 182], [328, 198]], null, C.skin, 11) +
+    head(268, 186)
+};
+
+/* ================= Übungen und Plan ================= */
+const EX = {
+  plank:    { name: 'Planke', tip: 'Unterarme am Boden, Körper bildet eine gerade Linie. Bauch und Po anspannen, Hüfte nicht durchhängen lassen.', svg: fig.plank },
+  deadbug:  { name: 'Dead Bug', tip: 'Rücken am Boden. Gegenüberliegenden Arm und Bein langsam strecken, der untere Rücken bleibt flach.', svg: fig.deadbug },
+  sideL:    { name: 'Seitplanke links', tip: 'Linker Unterarm am Boden, Ellbogen unter der Schulter. Hüfte hoch, Körper bleibt in einer Linie.', svg: fig.side },
+  sideR:    { name: 'Seitplanke rechts', tip: 'Rechter Unterarm am Boden, Ellbogen unter der Schulter. Hüfte hoch, nicht nach vorn oder hinten kippen.', svg: () => '<g transform="translate(400,0) scale(-1,1)">' + fig.side() + '</g>' },
+  reverse:  { name: 'Reverse Crunch', tip: 'Auf dem Rücken, Knie zur Brust ziehen und das Becken leicht anheben, langsam wieder absenken. Kein Schwung.', svg: fig.reverse },
+  birddog:  { name: 'Bird Dog', tip: 'Gegenüberliegenden Arm und Bein strecken, Rücken ruhig halten. Nach der Hälfte der Zeit die Seite wechseln.', svg: fig.birddog, swap: true },
+  crunch:   { name: 'Crunch', tip: 'Füße am Boden, Hände locker neben dem Kopf. Schultern vom Boden heben, kein Zug am Nacken.', svg: fig.crunch },
+  russian:  { name: 'Rumpfdrehung', tip: 'Füße am Boden, Oberkörper leicht zurücklehnen. Rumpf abwechselnd nach links und rechts drehen.', svg: fig.russian },
+  bridge:   { name: 'Beckenheben', tip: 'Füße hüftbreit aufstellen, Becken heben, bis Schultern, Hüfte und Knie eine Linie bilden. Oben kurz anspannen.', svg: fig.bridge },
+  climber:  { name: 'Bergsteiger langsam', tip: 'Hohe Liegestützposition, Knie abwechselnd langsam zur Brust ziehen. Die Hüfte bleibt ruhig.', svg: fig.climber },
+  shoulder: { name: 'Schulterberührung', tip: 'Hohe Liegestützposition, Füße etwas breiter. Abwechselnd die gegenüberliegende Schulter antippen, Hüfte ruhig halten.', svg: fig.shoulder },
+  march:    { name: 'Marschieren auf der Stelle', tip: 'Locker starten: Knie abwechselnd anheben, Arme schwingen mit.', svg: fig.march },
+  catcow:   { name: 'Katze und Kuh', tip: 'Vierfüßlerstand: Rücken abwechselnd rund machen und durchhängen lassen, im Rhythmus des Atems.', svg: fig.catcow },
+  child:    { name: 'Kindpose', tip: 'Po Richtung Fersen sinken lassen, Stirn ablegen, Arme nach vorn. Ruhig weiteratmen.', svg: fig.child }
+};
+const PLAN = {
+  workouts: {
+    A: { name: 'Stabilität', ex: ['plank', 'deadbug', 'sideL', 'sideR', 'reverse', 'birddog'] },
+    B: { name: 'Bauchmuskeln', ex: ['crunch', 'russian', 'bridge', 'reverse', 'deadbug', 'plank'] },
+    C: { name: 'Rumpf und Taille', ex: ['shoulder', 'sideL', 'sideR', 'climber', 'birddog', 'crunch'] },
+    R: { name: 'Locker-Tag und Messen', ex: ['march', 'catcow', 'child'], light: true, work: 30 }
+  },
+  days: ['A', 'B', 'C', 'A', 'B', 'C', 'R'],
+  weeks: [
+    { work: 20, theme: 'Woche 1: Technik lernen. Lieber langsam und sauber als schnell.' },
+    { work: 25, theme: 'Woche 2: Routine festigen. Jetzt zusätzlich täglich 7.000 bis 8.000 Schritte versuchen.' },
+    { work: 30, theme: 'Woche 3: Etwas intensiver, aber weiter kontrolliert.' },
+    { work: 35, theme: 'Woche 4: Volle Länge. Zeig, was du gelernt hast.' }
+  ]
+};
+const READY = 10, REST = 10, ROUND_REST = 20, WARM = 30;
+
+/* ================= Plan-Ansicht ================= */
+const state = { week: 1, day: 1, short: false, mSel: null };
+const noneDone = () => Object.keys(DB.done).length === 0;
+const curM = () => state.mSel !== null ? state.mSel : (!DB.meas[0] && noneDone() ? 0 : state.week);
+const mLabel = w => w === 0 ? 'Start' : `Woche ${w}`;
+const key = (w, d) => `${w}-${d}`;
+function nextOpen() {
+  for (let w = 1; w <= 4; w++) for (let d = 1; d <= 7; d++) if (!DB.done[key(w, d)]) return { w, d };
+  return null;
+}
+function cfg() {
+  const wk = PLAN.weeks[state.week - 1], wo = PLAN.workouts[PLAN.days[state.day - 1]];
+  return { wk, wo, rounds: wo.light ? 1 : (state.short ? 1 : 2), work: wo.light ? wo.work : wk.work };
+}
+function buildSteps() {
+  const { wo, rounds, work } = cfg(), n = wo.ex.length, list = [], warm = !wo.light;
+  list.push({ type: 'ready', dur: READY, ex: warm ? 'march' : wo.ex[0], warm, round: 1, i: warm ? -1 : 0, n, rounds });
+  if (warm) {
+    list.push({ type: 'work', dur: WARM, ex: 'march', warm: true, round: 0, i: -1, n, rounds });
+    list.push({ type: 'rest', dur: REST, ex: wo.ex[0], round: 1, i: 0, n, rounds });
+  }
+  for (let r = 1; r <= rounds; r++) {
+    wo.ex.forEach((ex, i) => {
+      list.push({ type: 'work', dur: work, ex, round: r, i, n, rounds });
+      const last = r === rounds && i === n - 1;
+      if (!last) {
+        const end = i === n - 1;
+        list.push({ type: 'rest', dur: end ? ROUND_REST : REST, ex: end ? wo.ex[0] : wo.ex[i + 1],
+          round: end ? r + 1 : r, i: end ? 0 : i + 1, roundBreak: end, n, rounds });
+      }
+    });
+  }
+  return list;
+}
+const fmt = s => `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+
+function renderPlan() {
+  // Wochen
+  $('weeks').innerHTML = [1, 2, 3, 4].map(w => `<button data-w="${w}" aria-pressed="${w === state.week}">Woche ${w}</button>`).join('');
+  $('weekTheme').textContent = PLAN.weeks[state.week - 1].theme;
+  // Tage
+  const nx = nextOpen();
+  $('days').innerHTML = [1, 2, 3, 4, 5, 6, 7].map(d => {
+    const done = !!DB.done[key(state.week, d)];
+    const isNext = nx && nx.w === state.week && nx.d === d;
+    return `<button data-d="${d}" class="${done ? 'done' : ''} ${isNext ? 'next' : ''}" aria-pressed="${d === state.day}" aria-label="Tag ${d}${done ? ', erledigt' : ''}">${d}</button>`;
+  }).join('');
+  // Tageskarte
+  const { wo, rounds, work } = cfg();
+  const total = buildSteps().reduce((a, b) => a + b.dur, 0);
+  $('dayTitle').textContent = `Woche ${state.week}, Tag ${state.day}: ${wo.name}`;
+  $('dayMeta').textContent = `${rounds} ${rounds === 1 ? 'Runde' : 'Runden'} mit je ${work} Sekunden, Dauer etwa ${fmt(total)} Min.` + (wo.light ? '' : ' Inklusive 30 Sekunden Aufwärmen.');
+  $('exList').innerHTML = wo.ex.map(k => `<li>${EX[k].name}</li>`).join('');
+  $('shortRow').style.display = wo.light ? 'none' : 'flex';
+  $('short').checked = state.short;
+  const isDone = !!DB.done[key(state.week, state.day)];
+  $('markDone').textContent = isDone ? `Erledigt am ${DB.done[key(state.week, state.day)].split('-').reverse().join('.')} (zurücknehmen)` : 'Als erledigt markieren';
+  // Fortschritt
+  const count = Object.keys(DB.done).length;
+  $('ovSummary').textContent = `${count} von 28 Tagen geschafft.`;
+  $('overview').innerHTML = [1, 2, 3, 4].map(w =>
+    `<div class="ovrow"><span>Woche ${w}</span>` +
+    [1, 2, 3, 4, 5, 6, 7].map(d => `<button data-ow="${w}" data-od="${d}" class="${DB.done[key(w, d)] ? 'done' : ''}" aria-label="Woche ${w}, Tag ${d}${DB.done[key(w, d)] ? ', erledigt' : ''}"></button>`).join('') + '</div>').join('');
+  // Messen
+  const mw = curM();
+  document.querySelectorAll('.mw').forEach(e => e.textContent = mLabel(mw));
+  $('mSel').innerHTML = [0, 1, 2, 3, 4].map(w => `<button type="button" class="chip wide" data-m="${w}" aria-pressed="${w === mw}">${mLabel(w)}${DB.meas[w] ? ' ✓' : ''}</button>`).join('');
+  const m = DB.meas[mw] || {};
+  $('mcm').value = m.cm ?? ''; $('mkg').value = m.kg ?? ''; $('mphoto').checked = !!m.photo;
+  const lines = [0, 1, 2, 3, 4].filter(w => DB.meas[w]).map(w => {
+    const x = DB.meas[w];
+    return `${mLabel(w)}: ${x.cm ? String(x.cm).replace('.', ',') + ' cm' : 'kein Umfang'}, ${x.kg ? String(x.kg).replace('.', ',') + ' kg' : 'kein Gewicht'}${x.photo ? ', Fotos gemacht' : ''}`;
+  });
+  const withCm = [0, 1, 2, 3, 4].filter(w => DB.meas[w] && DB.meas[w].cm);
+  if (withCm.length > 1) {
+    const diff = DB.meas[withCm[withCm.length - 1]].cm - DB.meas[withCm[0]].cm;
+    lines.push(`Veränderung beim Bauchumfang: ${diff > 0 ? '+' : ''}${diff.toFixed(1).replace('.', ',')} cm seit ${mLabel(withCm[0])}`);
+  }
+  $('hist').innerHTML = lines.join('<br>');
+  // Banner
+  let msg = '';
+  const pending = [1, 2, 3, 4].find(w => DB.done[key(w, 7)] && !DB.meas[w]);
+  if (nx && nx.d === 7) msg = `Heute ist Messtag (Woche ${nx.w}, Tag 7): Bauchumfang, Gewicht und Fotos. Unten bei „Messen: Start und Tag 7“ eintragen.`;
+  else if (pending) msg = `Die Messwerte für Woche ${pending} fehlen noch. Unten bei „Messen: Start und Tag 7“ eintragen.`;
+  else if (!DB.meas[0] && noneDone()) msg = 'Startmessung: Miss vor dem ersten Training Bauchumfang und Gewicht und mach Fotos. Unten bei „Messen: Start und Tag 7“ eintragen.';
+  $('banner').hidden = !msg; $('banner').textContent = msg;
+  $('measure').open = !!msg || state.day === 7;
+  $('startDate').value = DB.start;
+  renderVideos();
+}
+
+/* ================= Videos ================= */
+const DEFAULT_VIDEOS = [
+  { id: '_V7mOIyaoBo', title: '5 Minuten Bauchtraining für Unsportliche & Fitness-Anfänger (mit Erklärung)', days: [2, 5] },
+  { id: 'QUwmEfjtT2M', title: '5 Minuten Bauch Challenge', days: [1, 4] },
+  { id: 'Yx_zl4yZlwI', title: '5 Minuten täglich für eine schmalere Taille (Routine)', days: [3] },
+  { id: 'm8lSq4SC_eM', title: 'Complete Beginner Core: Plank, Side Plank, Dead Bug', days: [6] },
+  { id: 'WVTYjIQAlow', title: 'Der Dead Bug erklärt', days: [1, 2, 4, 5, 6] },
+  { id: 'X__x56gbLwM', title: 'Alternative: 5 Minuten Plank Workout für Anfänger', days: [6] },
+  { id: 'WHmEHsyUlX0', title: 'Alternative: Dead Bug Übungsanleitung', days: [1, 2, 4, 5, 6] }
+];
+if (!Array.isArray(DB.videos)) DB.videos = [];
+if (DB.vlist !== 2) {
+  DB.videos = DB.videos.filter(v => v.id !== 'flTkLP-OL90');
+  DEFAULT_VIDEOS.forEach(d => { if (!DB.videos.some(v => (d.id && v.id === d.id) || v.title === d.title)) DB.videos.push({ ...d }); });
+  DB.vlist = 2; save();
+}
+/* Korrektur: fehlte früher der erste Buchstabe des Links, ergänzen */
+DB.videos.forEach(v => {
+  if (!v.id && v.title.startsWith('5 Minuten Bauchtraining für Unsportliche')) { v.id = '_V7mOIyaoBo'; save(); }
+});
+let showAllVideos = false;
+const newDays = new Set();
+const escapeHtml = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const videoId = u => { const m = String(u).match(/(?:youtu\.be\/|[?&]v=|\/shorts\/|\/embed\/)([A-Za-z0-9_-]{11})/); return m ? m[1] : null; };
+const canEmbed = location.protocol !== 'file:';
+const chips = (set, attr) => [1, 2, 3, 4, 5, 6, 7].map(d => `<button type="button" class="chip" ${attr}="${d}" aria-pressed="${set.includes(d)}" aria-label="Tag ${d}">${d}</button>`).join('');
+function renderVideos() {
+  const list = DB.videos.map((v, i) => ({ v, i })).filter(({ v }) => showAllVideos || !v.days || !v.days.length || v.days.includes(state.day));
+  $('videosTitle').textContent = showAllVideos ? 'Alle Videos' : `Videos für Tag ${state.day}`;
+  $('vAll').textContent = showAllVideos ? `Nur Videos für Tag ${state.day} zeigen` : 'Alle Videos anzeigen';
+  $('videos').innerHTML = list.map(({ v, i }) => `
+    <div class="vid">
+      <div class="vtitle">${escapeHtml(v.title)}</div>
+      ${v.id ? `
+      <div class="vplayer" id="vp${i}"></div>
+      <div class="vbtns">
+        <button class="ghost" data-play="${i}">${canEmbed ? 'Hier abspielen' : 'Auf YouTube abspielen'}</button>
+        ${canEmbed ? `<a class="ghost linkbtn" href="https://www.youtube.com/watch?v=${v.id}" target="_blank" rel="noopener noreferrer">Auf YouTube öffnen</a>` : ''}
+        <button class="ghost" data-del="${i}">Entfernen</button>
+      </div>` : `
+      <p class="muted" style="font-size:14px;margin:0 0 8px">Der gespeicherte Link war unvollständig. Füge hier den vollständigen YouTube-Link ein.</p>
+      <div class="field" style="margin:0 0 8px"><input type="text" inputmode="url" autocapitalize="off" autocorrect="off" id="fix${i}" placeholder="https://www.youtube.com/watch?v=..."></div>
+      <div class="vbtns">
+        <button class="ghost" data-fix="${i}">Link speichern</button>
+        <a class="ghost linkbtn" href="https://www.youtube.com/results?search_query=${encodeURIComponent(v.title)}" target="_blank" rel="noopener noreferrer">Auf YouTube suchen</a>
+        <button class="ghost" data-del="${i}">Entfernen</button>
+      </div>`}
+      <div class="vdays"><span>Zeigen an Tag:</span><div class="chips">${chips(v.days || [], 'data-vd="' + i + '" data-day')}</div></div>
+    </div>`).join('') || `<p class="muted">${showAllVideos ? 'Noch kein Video. Unten kannst du eins hinzufügen.' : `Für Tag ${state.day} ist kein Video hinterlegt.`}</p>`;
+}
+$('videos').onclick = e => {
+  const play = e.target.closest('[data-play]'), del = e.target.closest('[data-del]'), chip = e.target.closest('[data-vd]'), fix = e.target.closest('[data-fix]');
+  if (fix) {
+    const i = +fix.dataset.fix, id = videoId($('fix' + i).value.trim());
+    if (!id) { $('fix' + i).placeholder = 'Kein gültiger YouTube-Link, bitte erneut einfügen'; $('fix' + i).value = ''; return; }
+    DB.videos[i].id = id; save(); renderVideos();
+  } else if (play) {
+    const v = DB.videos[+play.dataset.play];
+    if (!canEmbed) { window.open(`https://www.youtube.com/watch?v=${v.id}`, '_blank', 'noopener'); return; }
+    $('vp' + play.dataset.play).innerHTML =
+      `<iframe src="https://www.youtube-nocookie.com/embed/${v.id}?playsinline=1&rel=0" title="${escapeHtml(v.title)}" allow="accelerometer; encrypted-media; picture-in-picture; fullscreen" allowfullscreen loading="lazy"></iframe>`;
+    play.hidden = true;
+  } else if (del) {
+    DB.videos.splice(+del.dataset.del, 1); save(); renderVideos();
+  } else if (chip) {
+    const v = DB.videos[+chip.dataset.vd], d = +chip.dataset.day;
+    v.days = (v.days || []).includes(d) ? v.days.filter(x => x !== d) : [...(v.days || []), d].sort();
+    save(); renderVideos();
+  }
+};
+$('vAll').onclick = () => { showAllVideos = !showAllVideos; renderVideos(); };
+function renderNewDays() { $('vNewDays').innerHTML = chips([...newDays], 'data-nd'); }
+$('vNewDays').onclick = e => {
+  const c = e.target.closest('[data-nd]'); if (!c) return;
+  const d = +c.dataset.nd; newDays.has(d) ? newDays.delete(d) : newDays.add(d); renderNewDays();
+};
+renderNewDays();
+$('vAdd').onclick = () => {
+  const id = videoId($('vUrl').value.trim());
+  if (!id) { $('vMsg').textContent = 'Aus diesem Link konnte ich kein YouTube-Video lesen. Kopiere die Adresse direkt aus YouTube.'; return; }
+  DB.videos.push({ id, title: $('vTitle').value.trim() || 'Eigenes Video', days: [...newDays].sort() });
+  save(); $('vUrl').value = ''; $('vTitle').value = ''; newDays.clear(); renderNewDays();
+  $('vMsg').textContent = 'Hinzugefügt.'; renderVideos();
+};
+
+/* ================= Plan-Bedienung ================= */
+$('weeks').onclick = e => { const b = e.target.closest('button'); if (b) { state.week = +b.dataset.w; state.mSel = null; renderPlan(); } };
+$('days').onclick = e => { const b = e.target.closest('button'); if (b) { state.day = +b.dataset.d; state.mSel = null; renderPlan(); } };
+$('overview').onclick = e => { const b = e.target.closest('button'); if (b) { state.week = +b.dataset.ow; state.day = +b.dataset.od; state.mSel = null; renderPlan(); window.scrollTo({ top: 0, behavior: 'smooth' }); } };
+$('short').onchange = e => { state.short = e.target.checked; renderPlan(); };
+$('markDone').onclick = () => {
+  const k = key(state.week, state.day);
+  if (DB.done[k]) delete DB.done[k]; else DB.done[k] = iso(new Date());
+  save(); renderPlan();
+};
+$('mSel').onclick = e => { const c = e.target.closest('[data-m]'); if (c) { state.mSel = +c.dataset.m; renderPlan(); $('measure').open = true; } };
+$('saveMeasure').onclick = () => {
+  const num = v => { const n = parseFloat(String(v).replace(',', '.')); return isFinite(n) ? n : null; };
+  DB.meas[curM()] = { cm: num($('mcm').value), kg: num($('mkg').value), photo: $('mphoto').checked };
+  save(); renderPlan(); $('measure').open = true;
+};
+$('startDate').onchange = e => { if (e.target.value) { DB.start = e.target.value; save(); } };
+$('ics').onclick = () => {
+  const base = new Date(DB.start + 'T12:00:00');
+  const pad = n => String(n).padStart(2, '0');
+  const ev = [0, 1, 2, 3, 4].map(w => {
+    const d = new Date(base); d.setDate(d.getDate() + (w === 0 ? 0 : 7 * w - 1));
+    const ds = `${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}`;
+    return ['BEGIN:VEVENT', `UID:coretimer-${w}-${DB.start}@local`, `DTSTAMP:${ds}T000000`, `DTSTART:${ds}T080000`, `DTEND:${ds}T081500`,
+      `SUMMARY:Core-Plan ${w === 0 ? 'Startmessung' : 'Messtag (Woche ' + w + ')'}`, 'DESCRIPTION:Bauchumfang auf Nabelhöhe\\, Gewicht und Fotos. Danach Locker-Tag.',
+      'BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Messtag', 'TRIGGER:PT0S', 'END:VALARM', 'END:VEVENT'].join('\r\n');
+  });
+  const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//Core-Timer//DE', ...ev, 'END:VCALENDAR'].join('\r\n');
+  const a = document.createElement('a');
+  a.href = 'data:text/calendar;charset=utf-8,' + encodeURIComponent(ics);
+  a.download = 'core-messtage.ics';
+  document.body.appendChild(a); a.click(); a.remove();
+};
+
+/* ================= Audio ================= */
+let ctx = null, master = null, musicOn = true, voiceOn = true, userAudio = null, schedId = null;
+let nextNoteTime = 0, step16 = 0;
+const BPM = 124, SIXTEENTH = 60 / BPM / 4;
+function initAudio() {
+  if (!ctx) {
+    const AC = window.AudioContext || window.webkitAudioContext;
+    ctx = new AC(); master = ctx.createGain(); master.gain.value = .55; master.connect(ctx.destination);
+  }
+  if (ctx.state === 'suspended') ctx.resume();
+}
+function tone(freq, t, dur, type = 'sine', vol = .3) {
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.type = type; o.frequency.setValueAtTime(freq, t);
+  g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .01); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + dur + .05);
+}
+function beep(freq = 880, dur = .15) { if (ctx) tone(freq, ctx.currentTime, dur, 'sine', .5); }
+function gong() { if (ctx) { const t = ctx.currentTime; tone(660, t, .5, 'triangle', .5); tone(990, t + .02, .6, 'sine', .35); } }
+function noise(t, dur, vol, hp) {
+  const len = Math.floor(ctx.sampleRate * dur), buf = ctx.createBuffer(1, len, ctx.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+  const s = ctx.createBufferSource(); s.buffer = buf;
+  const f = ctx.createBiquadFilter(); f.type = 'highpass'; f.frequency.value = hp;
+  const g = ctx.createGain(); g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+  s.connect(f); f.connect(g); g.connect(master); s.start(t);
+}
+function kick(t) {
+  const o = ctx.createOscillator(), g = ctx.createGain();
+  o.frequency.setValueAtTime(150, t); o.frequency.exponentialRampToValueAtTime(45, t + .12);
+  g.gain.setValueAtTime(.9, t); g.gain.exponentialRampToValueAtTime(0.0001, t + .22);
+  o.connect(g); g.connect(master); o.start(t); o.stop(t + .25);
+}
+const hz = n => 440 * Math.pow(2, (n - 69) / 12);
+const BASS = [45, 0, 45, 45, 0, 45, 48, 0, 43, 0, 43, 43, 0, 43, 47, 0];
+const ARP  = [69, 72, 76, 72, 69, 72, 76, 81, 67, 71, 74, 71, 67, 71, 74, 79];
+function playStep(s, t) {
+  const k = s % 16;
+  if (k % 4 === 0) kick(t);
+  if (k % 4 === 2) noise(t, .05, .22, 7000);
+  if (k === 4 || k === 12) noise(t, .12, .3, 1800);
+  if (BASS[k]) tone(hz(BASS[k]), t, SIXTEENTH * 1.6, 'sawtooth', .16);
+  if (s % 32 >= 16 || k % 2 === 0) tone(hz(ARP[k]), t, SIXTEENTH * 1.2, 'square', .045);
+}
+function scheduler() { while (nextNoteTime < ctx.currentTime + .15) { playStep(step16, nextNoteTime); nextNoteTime += SIXTEENTH; step16++; } }
+function startMusic() {
+  if (!musicOn) return;
+  if (userAudio) { userAudio.play().catch(() => {}); return; }
+  initAudio(); if (schedId) return;
+  nextNoteTime = ctx.currentTime + .1; step16 = 0; schedId = setInterval(scheduler, 25);
+}
+function stopMusic() { if (schedId) { clearInterval(schedId); schedId = null; } if (userAudio) userAudio.pause(); }
+function say(text) {
+  if (!voiceOn || !('speechSynthesis' in window)) return;
+  speechSynthesis.cancel();
+  const u = new SpeechSynthesisUtterance(text); u.lang = 'de-DE'; speechSynthesis.speak(u);
+}
+let wake = null;
+async function keepAwake() { try { if ('wakeLock' in navigator) wake = await navigator.wakeLock.request('screen'); } catch (e) {} }
+function releaseAwake() { if (wake) { wake.release().catch(() => {}); wake = null; } }
+let running = false;
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && running) keepAwake(); });
+
+/* ================= Training ================= */
+let steps = [], idx = 0, remaining = 0, last = 0, lastSec = null, timerId = null;
+function enter(i) {
+  idx = i; const s = steps[idx], ex = EX[s.ex];
+  remaining = s.dur * 1000; lastSec = null; last = performance.now();
+  if (s.type === 'work') { gong(); say(s.warm ? 'Aufwärmen. Los' : 'Los'); }
+  else if (s.type === 'rest') say(s.roundBreak ? `Runde ${s.round}. Als Nächstes: ${ex.name}` : `Pause. Als Nächstes: ${ex.name}`);
+  else say(s.warm ? 'Mach dich bereit. Zuerst wärmen wir auf.' : `Mach dich bereit. Erste Übung: ${ex.name}`);
+  render(true);
+}
+function next() { if (idx + 1 >= steps.length) return finish(); enter(idx + 1); }
+function render(full) {
+  const s = steps[idx], ex = EX[s.ex], total = s.dur * 1000;
+  if (full) {
+    document.body.classList.toggle('rest', s.type !== 'work');
+    $('figure').innerHTML = `<svg viewBox="0 0 400 240" role="img" aria-label="${ex.name}">${ex.svg()}</svg>`;
+    $('name').textContent = ex.name; $('tip').textContent = ex.tip;
+    $('phase').textContent = s.type === 'work' ? (s.warm ? 'Aufwärmen' : 'Los geht\u2019s')
+      : s.type === 'ready' ? 'Mach dich bereit'
+      : (s.roundBreak ? `Rundenpause, gleich Runde ${s.round}` : 'Pause, gleich geht es weiter');
+    $('metaEx').textContent = s.warm ? 'Aufwärmen' : `Übung ${s.i + 1} von ${s.n}`;
+    $('metaLeft').textContent = s.warm ? `Woche ${state.week}, Tag ${state.day}` : `Runde ${s.round} von ${s.rounds}`;
+    document.title = ex.name;
+  }
+  $('num').textContent = Math.max(0, Math.ceil(remaining / 1000));
+  $('bar').setAttribute('stroke-dashoffset', (552.92 * (1 - Math.max(0, remaining / total))).toFixed(1));
+}
+function tick() {
+  if (!running) return;
+  const now = performance.now(); remaining -= now - last; last = now;
+  const sec = Math.ceil(remaining / 1000), s = steps[idx];
+  if (sec !== lastSec) {
+    lastSec = sec;
+    if (sec > 0 && sec <= 3) beep(sec === 1 ? 988 : 784);
+    else if (s.type === 'work' && EX[s.ex].swap && sec === Math.ceil(s.dur / 2)) { beep(660, .25); say('Seite wechseln'); }
+  }
+  if (remaining <= 0) { next(); return; }
+  render(false);
+}
+function startTraining() {
+  initAudio(); steps = buildSteps();
+  document.body.classList.add('running'); document.body.classList.remove('finished');
+  running = true; $('pause').textContent = 'Pause';
+  keepAwake(); startMusic();
+  if ('speechSynthesis' in window && voiceOn) { const u = new SpeechSynthesisUtterance(' '); u.lang = 'de-DE'; speechSynthesis.speak(u); }
+  enter(0); clearInterval(timerId); timerId = setInterval(tick, 100);
+  window.scrollTo(0, 0);
+}
+function togglePause() {
+  if (running) {
+    running = false; $('pause').textContent = 'Weiter geht\u2019s';
+    if (ctx) ctx.suspend(); if (userAudio) userAudio.pause();
+    if ('speechSynthesis' in window) speechSynthesis.cancel();
+  } else {
+    running = true; last = performance.now(); $('pause').textContent = 'Pause';
+    if (ctx) ctx.resume(); if (userAudio && musicOn) userAudio.play().catch(() => {});
+    keepAwake();
+  }
+}
+function leave() {
+  running = false; clearInterval(timerId); stopMusic(); releaseAwake();
+  if ('speechSynthesis' in window) speechSynthesis.cancel();
+  document.body.classList.remove('running', 'finished', 'rest');
+  document.title = 'Core-Timer';
+  renderPlan();
+}
+function finish() {
+  running = false; clearInterval(timerId); stopMusic(); releaseAwake();
+  const doneW = state.week, doneD = state.day;
+  DB.done[key(doneW, doneD)] = iso(new Date()); save();
+  if (ctx) tone(880, ctx.currentTime, .8, 'triangle', .5);
+  const nx = nextOpen();
+  if (nx) { state.week = nx.w; state.day = nx.d; }
+  let text = 'Kurz aufstehen, ein paar Schritte gehen und etwas trinken.';
+  if (doneD === 6) text += ' Morgen ist Tag 7: Locker-Tag und Messen.';
+  if (doneD === 7) text += ' Trag jetzt deine Messwerte im Plan ein.';
+  $('doneTitle').textContent = `Woche ${doneW}, Tag ${doneD} geschafft`;
+  $('doneText').textContent = text;
+  say('Geschafft. Gut gemacht.');
+  document.body.classList.add('finished'); document.body.classList.remove('rest');
+  document.title = 'Core-Timer';
+}
+
+/* ================= Bedienung ================= */
+$('start').onclick = startTraining;
+$('pause').onclick = togglePause;
+$('skip').onclick = () => { if (running) next(); };
+$('stop').onclick = leave;
+$('again').onclick = leave;
+$('music').onchange = e => { musicOn = e.target.checked; if (!musicOn) stopMusic(); else if (running) startMusic(); };
+$('voice').onchange = e => { voiceOn = e.target.checked; if (!voiceOn && 'speechSynthesis' in window) speechSynthesis.cancel(); };
+$('file').onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  if (userAudio) userAudio.pause();
+  userAudio = new Audio(URL.createObjectURL(f)); userAudio.loop = true; userAudio.volume = .8;
+  $('fileName').textContent = f.name; $('musicInfo').textContent = 'Deine eigene Musik';
+};
+
+/* Start: nächsten offenen Tag vorwählen */
+(function init() {
+  const nx = nextOpen();
+  if (nx) { state.week = nx.w; state.day = nx.d; }
+  renderPlan();
+})();
+</script>
+</body>
+</html>
