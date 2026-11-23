@@ -235,6 +235,13 @@ function limb(a, b, col, w) {
   return `<polyline points="${p}" style="stroke:${OUT};stroke-width:${w + 5}" ${LS}>${an}</polyline>` +
          `<polyline points="${p}" style="stroke:${col};stroke-width:${w}" ${LS}>${an}</polyline>`;
 }
+function limbCycle(poses, col, w, dur = '3.2s') {
+  const vs = poses.map(P), n = vs.length, vals = [...vs, vs[0]].join(';');
+  const kt = [...Array(n + 1)].map((_, i) => (i / n).toFixed(3)).join(';');
+  const an = AN ? `<animate attributeName="points" values="${vals}" keyTimes="${kt}" dur="${dur}" repeatCount="indefinite"/>` : '';
+  return `<polyline points="${vs[0]}" style="stroke:${OUT};stroke-width:${w + 5}" ${LS}>${an}</polyline>` +
+         `<polyline points="${vs[0]}" style="stroke:${col};stroke-width:${w}" ${LS}>${an}</polyline>`;
+}
 function head(x, y, x2, y2) {
   const dx = (x2 ?? x) - x, dy = (y2 ?? y) - y;
   const an = (AN && (dx || dy)) ? `<animateTransform attributeName="transform" type="translate" values="0 0;${dx} ${dy};0 0" keyTimes="0;.5;1" calcMode="spline" keySplines=".45 0 .55 1;.45 0 .55 1" dur="${DUR}" repeatCount="indefinite"/>` : '';
@@ -316,6 +323,18 @@ const fig = {
     limb([[200, 132], [240, 120], [240, 162]], [[200, 132], [200, 170], [200, 204]], C.pants, 16) +
     limb([[200, 74], [180, 100], [166, 124]], [[200, 74], [222, 100], [238, 122]], C.skin, 11) +
     head(200, 44),
+  squat: () => MAT +
+    limb([[200, 132], [200, 168], [200, 204]], [[172, 180], [214, 160], [200, 204]], C.farpants, 16) +
+    limb([[200, 68], [200, 132]], [[210, 126], [172, 178]], C.top, 24) +
+    limb([[200, 132], [200, 168], [200, 204]], [[172, 180], [214, 160], [200, 204]], C.pants, 16) +
+    limb([[200, 76], [205, 100], [210, 124]], [[212, 128], [246, 128], [280, 126]], C.skin, 11) +
+    head(200, 44, 227, 103),
+  shoulders: () => MAT +
+    limb([[200, 132], [200, 168], [200, 204]], null, C.farpants, 16) +
+    limb([[200, 68], [200, 132]], null, C.top, 24) +
+    limb([[200, 132], [200, 168], [200, 204]], null, C.pants, 16) +
+    limbCycle(Array.from({ length: 8 }, (_, k) => { const t = 2 * Math.PI * k / 8, dx = Math.sin(t), dy = Math.cos(t); return [[200, 80], [200 + 25 * dx, 80 + 25 * dy], [200 + 50 * dx, 80 + 50 * dy]]; }), C.skin, 11) +
+    head(200, 44),
   catcow: () => MAT +
     limb([[150, 134], [150, 196], [106, 198]], null, C.farpants, 16) +
     limb([[272, 134], [272, 198]], null, C.farskin, 11) +
@@ -345,6 +364,8 @@ const EX = {
   climber:  { name: 'Bergsteiger langsam', tip: 'Hohe Liegestützposition, Knie abwechselnd langsam zur Brust ziehen. Die Hüfte bleibt ruhig.', svg: fig.climber },
   shoulder: { name: 'Schulterberührung', tip: 'Hohe Liegestützposition, Füße etwas breiter. Abwechselnd die gegenüberliegende Schulter antippen, Hüfte ruhig halten.', svg: fig.shoulder },
   march:    { name: 'Marschieren auf der Stelle', tip: 'Locker starten: Knie abwechselnd anheben, Arme schwingen mit.', svg: fig.march },
+  squat:    { name: 'Kniebeugen', tip: 'Füße schulterbreit, Po nach hinten unten schieben wie beim Hinsetzen. Brust offen, Knie über den Füßen, so tief wie es sich gut anfühlt.', svg: fig.squat },
+  shoulders:{ name: 'Schulterkreisen', tip: 'Aufrecht stehen und die Arme locker nach hinten kreisen lassen, die Schultern kreisen mit. Nach der Hälfte die Richtung wechseln.', svg: fig.shoulders },
   catcow:   { name: 'Katze und Kuh', tip: 'Vierfüßlerstand: Rücken abwechselnd rund machen und durchhängen lassen, im Rhythmus des Atems.', svg: fig.catcow },
   child:    { name: 'Kindpose', tip: 'Po Richtung Fersen sinken lassen, Stirn ablegen, Arme nach vorn. Ruhig weiteratmen.', svg: fig.child }
 };
@@ -363,7 +384,9 @@ const PLAN = {
     { work: 35, theme: 'Woche 4: Volle Länge. Zeig, was du gelernt hast.' }
   ]
 };
-const READY = 10, REST = 10, ROUND_REST = 20, WARM = 30;
+const READY = 10, REST = 10, ROUND_REST = 20, WARM = 20, WARM_GAP = 5;
+const WARMUP = ['march', 'squat', 'shoulders'];
+const WARM_TOTAL = WARMUP.length * WARM + (WARMUP.length - 1) * WARM_GAP;
 
 /* ================= Plan-Ansicht ================= */
 const state = { week: 1, day: 1, short: false, mSel: null };
@@ -381,10 +404,15 @@ function cfg() {
 }
 function buildSteps() {
   const { wo, rounds, work } = cfg(), n = wo.ex.length, list = [], warm = !wo.light;
-  list.push({ type: 'ready', dur: READY, ex: warm ? 'march' : wo.ex[0], warm, round: 1, i: warm ? -1 : 0, n, rounds });
+  list.push({ type: 'ready', dur: READY, ex: warm ? WARMUP[0] : wo.ex[0], warm, round: 1, i: 0, n: warm ? WARMUP.length : n, rounds });
   if (warm) {
-    list.push({ type: 'work', dur: WARM, ex: 'march', warm: true, round: 0, i: -1, n, rounds });
-    list.push({ type: 'rest', dur: REST, ex: wo.ex[0], round: 1, i: 0, n, rounds });
+    WARMUP.forEach((ex, wi) => {
+      list.push({ type: 'work', dur: WARM, ex, warm: true, round: 0, i: wi, n: WARMUP.length, rounds });
+      const lastW = wi === WARMUP.length - 1;
+      list.push(lastW
+        ? { type: 'rest', dur: REST, ex: wo.ex[0], round: 1, i: 0, n, rounds }
+        : { type: 'rest', dur: WARM_GAP, ex: WARMUP[wi + 1], warm: true, round: 0, i: wi + 1, n: WARMUP.length, rounds });
+    });
   }
   for (let r = 1; r <= rounds; r++) {
     wo.ex.forEach((ex, i) => {
@@ -416,7 +444,7 @@ function renderPlan() {
   const { wo, rounds, work } = cfg();
   const total = buildSteps().reduce((a, b) => a + b.dur, 0);
   $('dayTitle').textContent = `Woche ${state.week}, Tag ${state.day}: ${wo.name}`;
-  $('dayMeta').textContent = `${rounds} ${rounds === 1 ? 'Runde' : 'Runden'} mit je ${work} Sekunden, Dauer etwa ${fmt(total)} Min.` + (wo.light ? '' : ' Inklusive 30 Sekunden Aufwärmen.');
+  $('dayMeta').textContent = `${rounds} ${rounds === 1 ? 'Runde' : 'Runden'} mit je ${work} Sekunden, Dauer etwa ${fmt(total)} Min.` + (wo.light ? '' : ` Inklusive Aufwärmen (${fmt(WARM_TOTAL)} Min.).`);
   $('exList').innerHTML = wo.ex.map(k => `<li>${EX[k].name}</li>`).join('');
   $('shortRow').style.display = wo.light ? 'none' : 'flex';
   $('short').checked = state.short;
@@ -643,7 +671,7 @@ let steps = [], idx = 0, remaining = 0, last = 0, lastSec = null, timerId = null
 function enter(i) {
   idx = i; const s = steps[idx], ex = EX[s.ex];
   remaining = s.dur * 1000; lastSec = null; last = performance.now();
-  if (s.type === 'work') { gong(); say(s.warm ? 'Aufwärmen. Los' : 'Los'); }
+  if (s.type === 'work') { gong(); say(s.warm && s.i === 0 ? 'Aufwärmen. Los' : 'Los'); }
   else if (s.type === 'rest') say(s.roundBreak ? `Runde ${s.round}. Als Nächstes: ${ex.name}` : `Pause. Als Nächstes: ${ex.name}`);
   else say(s.warm ? 'Mach dich bereit. Zuerst wärmen wir auf.' : `Mach dich bereit. Erste Übung: ${ex.name}`);
   render(true);
@@ -658,7 +686,7 @@ function render(full) {
     $('phase').textContent = s.type === 'work' ? (s.warm ? 'Aufwärmen' : 'Los geht\u2019s')
       : s.type === 'ready' ? 'Mach dich bereit'
       : (s.roundBreak ? `Rundenpause, gleich Runde ${s.round}` : 'Pause, gleich geht es weiter');
-    $('metaEx').textContent = s.warm ? 'Aufwärmen' : `Übung ${s.i + 1} von ${s.n}`;
+    $('metaEx').textContent = s.warm ? `Aufwärmen ${s.i + 1} von ${WARMUP.length}` : `Übung ${s.i + 1} von ${s.n}`;
     $('metaLeft').textContent = s.warm ? `Woche ${state.week}, Tag ${state.day}` : `Runde ${s.round} von ${s.rounds}`;
     document.title = ex.name;
   }
