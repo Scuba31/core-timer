@@ -75,6 +75,10 @@
   .chip { width: 40px; height: 40px; border-radius: 50%; border: 1.5px solid var(--line); background: transparent; color: var(--ink); font-size: 16px; font-weight: 700; cursor: pointer; padding: 0; }
   .chip[aria-pressed=true] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
   .vdays { margin-top: 10px; color: var(--muted); font-size: 14px; display: grid; gap: 6px; }
+  .stepper { display: flex; align-items: center; gap: 10px; }
+  .stepper button { width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid var(--line); background: transparent; color: var(--ink); font-size: 24px; line-height: 1; cursor: pointer; padding: 0; }
+  .stepper span { min-width: 3.4em; text-align: center; font-size: 20px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .linkish { background: none; border: 0; color: var(--work); text-decoration: underline; font-size: 14px; padding: 0 0 8px; cursor: pointer; font-family: inherit; }
   .overview { display: grid; gap: 8px; }
   .ovrow { display: grid; grid-template-columns: 74px repeat(7, 1fr); gap: 6px; align-items: center; }
   .ovrow span { color: var(--muted); font-size: 14px; }
@@ -134,6 +138,11 @@
       <h2 id="dayTitle"></h2>
       <div class="muted" id="dayMeta"></div>
       <ol id="exList"></ol>
+      <div class="row" id="workRow">
+        <div>Dauer pro Übung<small id="workInfo"></small></div>
+        <div class="stepper"><button type="button" id="wMinus" aria-label="Kürzer">−</button><span id="wVal" aria-live="polite"></span><button type="button" id="wPlus" aria-label="Länger">+</button></div>
+      </div>
+      <button class="linkish" id="wReset" hidden>Auf den Wochenwert zurücksetzen</button>
       <div class="row" id="shortRow">
         <div>Kurzversion (1 Runde)<small>Für Tage mit wenig Zeit oder Motivation</small></div>
         <input type="checkbox" id="short" aria-label="Kurzversion">
@@ -203,7 +212,8 @@
     <div id="done">
       <h2 id="doneTitle">Geschafft</h2>
       <p id="doneText"></p>
-      <button class="big" id="again">Zurück zum Plan</button>
+      <button class="big" id="extra">Noch eine Runde</button>
+      <button class="ghost" id="again" style="width:100%;margin-top:10px">Training abschließen</button>
     </div>
   </section>
 
@@ -400,7 +410,7 @@ function nextOpen() {
 }
 function cfg() {
   const wk = PLAN.weeks[state.week - 1], wo = PLAN.workouts[PLAN.days[state.day - 1]];
-  return { wk, wo, rounds: wo.light ? 1 : (state.short ? 1 : 2), work: wo.light ? wo.work : wk.work };
+  return { wk, wo, rounds: wo.light ? 1 : (state.short ? 1 : 2), work: wo.light ? wo.work : (DB.workOverride || wk.work) };
 }
 function buildSteps() {
   const { wo, rounds, work } = cfg(), n = wo.ex.length, list = [], warm = !wo.light;
@@ -446,6 +456,10 @@ function renderPlan() {
   $('dayTitle').textContent = `Woche ${state.week}, Tag ${state.day}: ${wo.name}`;
   $('dayMeta').textContent = `${rounds} ${rounds === 1 ? 'Runde' : 'Runden'} mit je ${work} Sekunden, Dauer etwa ${fmt(total)} Min.` + (wo.light ? '' : ` Inklusive Aufwärmen (${fmt(WARM_TOTAL)} Min.).`);
   $('exList').innerHTML = wo.ex.map(k => `<li>${EX[k].name}</li>`).join('');
+  $('workRow').style.display = wo.light ? 'none' : 'flex';
+  $('wVal').textContent = `${work} s`;
+  $('workInfo').textContent = DB.workOverride ? `Eigene Einstellung, Standard in Woche ${state.week}: ${PLAN.weeks[state.week - 1].work} s` : `Standard für Woche ${state.week}`;
+  $('wReset').hidden = wo.light || !DB.workOverride;
   $('shortRow').style.display = wo.light ? 'none' : 'flex';
   $('short').checked = state.short;
   const isDone = !!DB.done[key(state.week, state.day)];
@@ -603,6 +617,15 @@ $('ics').onclick = () => {
   document.body.appendChild(a); a.click(); a.remove();
 };
 
+/* ================= Dauer anpassen ================= */
+function changeWork(delta) {
+  const cur = cfg().work;
+  DB.workOverride = Math.min(90, Math.max(10, cur + delta)); save(); renderPlan();
+}
+$('wMinus').onclick = () => changeWork(-5);
+$('wPlus').onclick = () => changeWork(5);
+$('wReset').onclick = () => { DB.workOverride = null; save(); renderPlan(); };
+
 /* ================= Audio ================= */
 let ctx = null, master = null, musicOn = true, voiceOn = true, userAudio = null, schedId = null;
 let nextNoteTime = 0, step16 = 0;
@@ -667,6 +690,7 @@ let running = false;
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible' && running) keepAwake(); });
 
 /* ================= Training ================= */
+let session = null, extraN = 0;
 let steps = [], idx = 0, remaining = 0, last = 0, lastSec = null, timerId = null;
 function enter(i) {
   idx = i; const s = steps[idx], ex = EX[s.ex];
@@ -707,6 +731,7 @@ function tick() {
 }
 function startTraining() {
   initAudio(); steps = buildSteps();
+  session = { ...cfg(), week: state.week, day: state.day }; extraN = 0;
   document.body.classList.add('running'); document.body.classList.remove('finished');
   running = true; $('pause').textContent = 'Pause';
   keepAwake(); startMusic();
@@ -732,9 +757,25 @@ function leave() {
   document.title = 'Core-Timer';
   renderPlan();
 }
+function buildExtra() {
+  const { wo, work } = session, n = wo.ex.length, R = session.rounds + extraN, list = [];
+  list.push({ type: 'rest', dur: ROUND_REST, ex: wo.ex[0], round: R, i: 0, n, rounds: R, roundBreak: true });
+  wo.ex.forEach((ex, i) => {
+    list.push({ type: 'work', dur: work, ex, round: R, i, n, rounds: R });
+    if (i < n - 1) list.push({ type: 'rest', dur: REST, ex: wo.ex[i + 1], round: R, i: i + 1, n, rounds: R });
+  });
+  return list;
+}
+function startExtra() {
+  initAudio(); extraN++; steps = buildExtra();
+  document.body.classList.add('running'); document.body.classList.remove('finished');
+  running = true; $('pause').textContent = 'Pause';
+  keepAwake(); startMusic();
+  enter(0); clearInterval(timerId); timerId = setInterval(tick, 100);
+}
 function finish() {
   running = false; clearInterval(timerId); stopMusic(); releaseAwake();
-  const doneW = state.week, doneD = state.day;
+  const doneW = session.week, doneD = session.day;
   DB.done[key(doneW, doneD)] = iso(new Date()); save();
   if (ctx) tone(880, ctx.currentTime, .8, 'triangle', .5);
   const nx = nextOpen();
@@ -743,8 +784,8 @@ function finish() {
   if (doneD === 6) text += ' Morgen ist Tag 7: Locker-Tag und Messen.';
   if (doneD === 7) text += ' Trag jetzt deine Messwerte im Plan ein.';
   $('doneTitle').textContent = `Woche ${doneW}, Tag ${doneD} geschafft`;
-  $('doneText').textContent = text;
-  say('Geschafft. Gut gemacht.');
+  $('doneText').textContent = text + ' Hast du noch Lust auf eine Runde?';
+  say('Geschafft. Gut gemacht. Hast du noch Lust auf eine Runde?');
   document.body.classList.add('finished'); document.body.classList.remove('rest');
   document.title = 'Core-Timer';
 }
@@ -755,6 +796,7 @@ $('pause').onclick = togglePause;
 $('skip').onclick = () => { if (running) next(); };
 $('stop').onclick = leave;
 $('again').onclick = leave;
+$('extra').onclick = startExtra;
 $('music').onchange = e => { musicOn = e.target.checked; if (!musicOn) stopMusic(); else if (running) startMusic(); };
 $('voice').onchange = e => { voiceOn = e.target.checked; if (!voiceOn && 'speechSynthesis' in window) speechSynthesis.cancel(); };
 $('file').onchange = e => {
